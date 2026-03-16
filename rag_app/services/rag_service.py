@@ -1,3 +1,7 @@
+"""
+RAG Service - Retrieval Augmented Generation for Django
+Copyright (c) 2026 Reamon Sumapig - All Rights Reserved
+"""
 import os
 from typing import List, Tuple
 

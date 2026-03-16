@@ -1,3 +1,7 @@
+"""
+Views - Django RAG Application
+Copyright (c) 2026 Reamon Sumapig - All Rights Reserved
+"""
 from django.shortcuts import render, redirect
 from django.views.generic import ListView, DetailView
 from django.views import View

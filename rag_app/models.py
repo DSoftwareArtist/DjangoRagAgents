@@ -1,3 +1,7 @@
+"""
+Models - Django RAG Application
+Copyright (c) 2026 Reamon Sumapig - All Rights Reserved
+"""
 from django.db import models
 from pgvector.django import VectorField
 
