@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Query Result - Django RAG{% endblock %}
+
+{% block content %}
+<a href="{% url 'rag_query' %}" class="btn btn-secondary mb-3">&larr; Back to Query</a>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>Question</h5>
+    </div>
+    <div class="card-body">
+        <p class="mb-0">{{ query }}</p>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5>Answer</h5>
+    </div>
+    <div class="card-body">
+        <p class="mb-0">{{ answer|linebreaks }}</p>
+    </div>
+</div>
+
+{% if sources %}
+<div class="card">
+    <div class="card-header">
+        <h5>Sources</h5>
+    </div>
+    <div class="card-body">
+        {% for source in sources %}
+        <div class="mb-3 pb-3 {% if not forloop.last %}border-bottom{% endif %}">
+            <h6>{{ source.document }}</h6>
+            <p class="mb-1 text-muted">{{ source.content }}</p>
+            <small class="text-info">Similarity: {{ source.similarity }}</small>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

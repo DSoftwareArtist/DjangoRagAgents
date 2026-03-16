@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Query - Django RAG{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Ask a Question</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="id_query" class="form-label">Your Question</label>
+                <textarea class="form-control" id="id_query" name="query" rows="4" placeholder="Enter your question about your documents..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Ask</button>
+        </form>
+    </div>
+</div>
+
+{% if history %}
+<h3>Recent Queries</h3>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Query</th>
+            <th>Time</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in history %}
+        <tr>
+            <td>{{ item.query|truncatechars:50 }}</td>
+            <td>{{ item.created_at|date:"M d, H:i" }}</td>
+            <td><a href="{% url 'query_result' item.pk %}" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}
