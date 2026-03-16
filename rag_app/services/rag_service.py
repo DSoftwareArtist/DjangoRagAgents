@@ -7,7 +7,7 @@ from typing import List, Tuple
 
 from django.conf import settings
 from sentence_transformers import SentenceTransformer
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
 from rag_app.models import Document, DocumentChunk
