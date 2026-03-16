@@ -115,6 +115,22 @@ curl -X POST http://localhost:8000/api/rag/query/ \
 python manage.py ingest_documents --directory=documents
 ```
 
+## Running Tests
+
+```bash
+# Run all tests
+python manage.py test
+
+# Run with verbose output
+python manage.py test rag_app --verbosity=2
+```
+
+## GitHub Actions
+
+The project includes CI/CD workflows in `.github/workflows/`:
+- **Django Tests**: Runs migrations and unit tests on push/PR
+- **Lint**: Code quality checks with flake8
+
 ## Notes
 
 - Groq provides free tier with Llama 3.1 8B model (very fast)
