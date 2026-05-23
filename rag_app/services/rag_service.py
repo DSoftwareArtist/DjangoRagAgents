@@ -3,7 +3,7 @@ RAG Service - Retrieval Augmented Generation for Django
 Copyright (c) 2026 Reamon Sumapig - All Rights Reserved
 """
 import os
-from typing import List, Tuple
+from typing import List, Literal, Tuple, TypedDict
 
 from django.conf import settings
 from sentence_transformers import SentenceTransformer
@@ -11,6 +11,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 
 from rag_app.models import Document, DocumentChunk
+
+
+class QueryState(TypedDict, total=False):
+    query_text: str
+    similar_chunks: List[Tuple[DocumentChunk, float]]
+    answer: str
+    sources: List[dict]
 
 
 class EmbeddingService:
@@ -80,6 +87,10 @@ class RAGService:
             base_url="https://api.groq.com/openai/v1",
         )
         self.model_name = "llama-3.1-8b-instant"
+        self._query_graph = None
+        self.document_only_fallback = (
+            "I can't answer that from the uploaded documents alone."
+        )
 
     def ingest_document(self, document: Document) -> None:
         file_path = document.file.path
@@ -123,26 +134,51 @@ class RAGService:
 
     def generate_answer(self, query: str, context_chunks: List[Tuple[DocumentChunk, float]]) -> str:
         context = "\n\n".join([chunk.content for chunk, _ in context_chunks])
-        
-        prompt = f"""Context: {context}
 
-Question: {query}
-
-Answer:"""
+        system_prompt = (
+            "You are a retrieval assistant for uploaded documents. "
+            "Answer using only the provided document context. "
+            "Do not use outside knowledge, assumptions, or general world facts. "
+            "If the answer is not explicitly supported by the context, respond exactly with: "
+            f"'{self.document_only_fallback}'"
+        )
+        user_prompt = f"""Document context: {context}
+        Question: {query}
+        Answer using only the uploaded documents:"""
         
         response = self.client.chat.completions.create(
             model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
             max_tokens=512,
         )
         return response.choices[0].message.content
 
-    def query(self, query_text: str) -> Tuple[str, List[dict]]:
-        similar_chunks = self.retrieve_similar_chunks(query_text)
-        if not similar_chunks:
-            return "No relevant documents found. Please upload and process documents first.", []
-        answer = self.generate_answer(query_text, similar_chunks)
-        sources = [
+    def _retrieve_chunks_node(self, state: QueryState) -> QueryState:
+        return {
+            'similar_chunks': self.retrieve_similar_chunks(state['query_text']),
+        }
+
+    def _route_after_retrieval(self, state: QueryState) -> Literal['no_results', 'generate_answer']:
+        if not state.get('similar_chunks'):
+            return 'no_results'
+        return 'generate_answer'
+
+    def _no_results_node(self, state: QueryState) -> QueryState:
+        return {
+            'answer': "No relevant documents found. Please upload and process documents first.",
+            'sources': [],
+        }
+
+    def _generate_answer_node(self, state: QueryState) -> QueryState:
+        return {
+            'answer': self.generate_answer(state['query_text'], state['similar_chunks']),
+        }
+
+    def _format_sources(self, similar_chunks: List[Tuple[DocumentChunk, float]]) -> List[dict]:
+        return [
             {
                 'document': chunk.document.title,
                 'content': chunk.content[:200] + '...' if len(chunk.content) > 200 else chunk.content,
@@ -150,5 +186,56 @@ Answer:"""
             }
             for chunk, similarity in similar_chunks
         ]
-        
+
+    def _format_sources_node(self, state: QueryState) -> QueryState:
+        return {
+            'sources': self._format_sources(state['similar_chunks']),
+        }
+
+    def _build_query_graph(self):
+        try:
+            from langgraph.graph import END, START, StateGraph
+        except ImportError:
+            return None
+
+        workflow = StateGraph(QueryState)
+        workflow.add_node('retrieve_chunks', self._retrieve_chunks_node)
+        workflow.add_node('no_results', self._no_results_node)
+        workflow.add_node('generate_answer', self._generate_answer_node)
+        workflow.add_node('format_sources', self._format_sources_node)
+
+        workflow.add_edge(START, 'retrieve_chunks')
+        workflow.add_conditional_edges(
+            'retrieve_chunks',
+            self._route_after_retrieval,
+            {
+                'no_results': 'no_results',
+                'generate_answer': 'generate_answer',
+            },
+        )
+        workflow.add_edge('no_results', END)
+        workflow.add_edge('generate_answer', 'format_sources')
+        workflow.add_edge('format_sources', END)
+        return workflow.compile()
+
+    def _get_query_graph(self):
+        if self._query_graph is None:
+            self._query_graph = self._build_query_graph()
+        return self._query_graph
+
+    def _run_query_pipeline(self, query_text: str) -> Tuple[str, List[dict]]:
+        similar_chunks = self.retrieve_similar_chunks(query_text)
+        if not similar_chunks:
+            return "No relevant documents found. Please upload and process documents first.", []
+
+        answer = self.generate_answer(query_text, similar_chunks)
+        sources = self._format_sources(similar_chunks)
         return answer, sources
+
+    def query(self, query_text: str) -> Tuple[str, List[dict]]:
+        query_graph = self._get_query_graph()
+        if query_graph is None:
+            return self._run_query_pipeline(query_text)
+
+        result = query_graph.invoke({'query_text': query_text})
+        return result['answer'], result['sources']
